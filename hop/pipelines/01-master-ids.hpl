@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>01-master-ids</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <pipeline_type>Normal</pipeline_type>
+    <pipeline_status>-1</pipeline_status>
+    <parameters/>
+    <description>Their companies -&gt; customer_master_id_lookup. Match on org number; mint a master id only where Melvis has never seen the company. No Oferta id is stored.</description>
+  </info>
+  <transform>
+    <name>their companies (mssql)</name>
+    <type>TableInput</type>
+    <description>All 250 of theirs.</description>
+    <connection>mssql_source</connection>
+    <sql>-- org_number is the only thing both systems agree on, and the only thing that
+-- crosses the boundary. Their id stays on their side.
+SELECT LTRIM(RTRIM(c.org_number))             AS org_nr,
+       c.name                                 AS co_name,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, c.created_at) AS metaregtime
+FROM companies c
+ORDER BY LTRIM(RTRIM(c.org_number))</sql>
+    <limit>0</limit>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lookup/>
+    <sql_from_file/>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <GUI><xloc>112</xloc><yloc>64</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>our master ids (melvis)</name>
+    <type>TableInput</type>
+    <description>The 80 companies Melvis already knows.</description>
+    <connection>mariadb_target</connection>
+    <sql>SELECT mi_id, mi_org_nr FROM customer_master_id_lookup ORDER BY mi_org_nr</sql>
+    <limit>0</limit>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lookup/>
+    <sql_from_file/>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <GUI><xloc>112</xloc><yloc>240</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>sort theirs</name>
+    <type>SortRows</type>
+    <description>Merge join trusts the stream order, and MS SQL collation is not Hop ordering.</description>
+    <directory>${java.io.tmpdir}</directory>
+    <prefix>srt</prefix>
+    <sort_size>100000</sort_size>
+    <free_memory/>
+    <compress>N</compress>
+    <compress_variable/>
+    <unique_rows>N</unique_rows>
+    <fields>
+      <field><name>org_nr</name><ascending>Y</ascending><case_sensitive>N</case_sensitive><collator_enabled>N</collator_enabled><collator_strength>0</collator_strength><presorted>N</presorted></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>272</xloc><yloc>64</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>sort ours</name>
+    <type>SortRows</type>
+    <description/>
+    <directory>${java.io.tmpdir}</directory>
+    <prefix>srt</prefix>
+    <sort_size>100000</sort_size>
+    <free_memory/>
+    <compress>N</compress>
+    <compress_variable/>
+    <unique_rows>N</unique_rows>
+    <fields>
+      <field><name>mi_org_nr</name><ascending>Y</ascending><case_sensitive>N</case_sensitive><collator_enabled>N</collator_enabled><collator_strength>0</collator_strength><presorted>N</presorted></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>272</xloc><yloc>240</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>match on org number</name>
+    <type>MergeJoin</type>
+    <description>The acquisition in one transform. mi_id comes back NULL for a company Melvis has never seen; those are the only ones that need a master id minting.</description>
+    <join_type>LEFT OUTER</join_type>
+    <keys_1>
+      <key>org_nr</key>
+    </keys_1>
+    <keys_2>
+      <key>mi_org_nr</key>
+    </keys_2>
+    <transform1>sort theirs</transform1>
+    <transform2>sort ours</transform2>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>448</xloc><yloc>152</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>defaults</name>
+    <type>Calculator</type>
+    <description/>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>metaunit</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <failIfNoFile>Y</failIfNoFile>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>592</xloc><yloc>152</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>already known?</name>
+    <type>FilterRows</type>
+    <description>A company Melvis already has needs nothing written at all - its master id exists and its data is ours. The false branch ends here on purpose.</description>
+    <send_true_to>mint a master id</send_true_to>
+    <send_false_to></send_false_to>
+    <compare>
+      <condition>
+        <negated>N</negated>
+        <leftvalue>mi_id</leftvalue>
+        <function>IS NULL</function>
+        <rightvalue/>
+        <value>
+          <name>constant</name>
+          <type>Integer</type>
+          <text></text>
+          <length>-1</length>
+          <precision>0</precision>
+          <isnull>N</isnull>
+          <mask/>
+        </value>
+      </condition>
+    </compare>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>736</xloc><yloc>152</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>mint a master id</name>
+    <type>SelectValues</type>
+    <description/>
+    <fields>
+      <field><name>org_nr</name><rename>mi_org_nr</rename><length>-2</length><precision>-2</precision></field>
+      <field><name>co_name</name><rename>mi_name</rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaregtime</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaunit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>928</xloc><yloc>152</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ customer_master_id_lookup</name>
+    <type>TableOutput</type>
+    <description>mi_id is auto_increment. Melvis mints it; nothing about their numbering leaks in.</description>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>customer_master_id_lookup</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field></return_field>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>mi_org_nr</stream_name><column_name>mi_org_nr</column_name></field>
+      <field><stream_name>mi_name</stream_name><column_name>mi_name</column_name></field>
+      <field><stream_name>metaregtime</stream_name><column_name>metaregtime</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1120</xloc><yloc>152</yloc></GUI>
+    <attributes/>
+  </transform>
+  <order>
+    <hop><from>their companies (mssql)</from><to>sort theirs</to><enabled>Y</enabled></hop>
+    <hop><from>our master ids (melvis)</from><to>sort ours</to><enabled>Y</enabled></hop>
+    <hop><from>sort theirs</from><to>match on org number</to><enabled>Y</enabled></hop>
+    <hop><from>sort ours</from><to>match on org number</to><enabled>Y</enabled></hop>
+    <hop><from>match on org number</from><to>defaults</to><enabled>Y</enabled></hop>
+    <hop><from>defaults</from><to>already known?</to><enabled>Y</enabled></hop>
+    <hop><from>already known?</from><to>mint a master id</to><enabled>Y</enabled></hop>
+    <hop><from>mint a master id</from><to>→ customer_master_id_lookup</to><enabled>Y</enabled></hop>
+  </order>
+  <notepads/>
+  <attributes/>
+  <transform_error_handling/>
+</pipeline>

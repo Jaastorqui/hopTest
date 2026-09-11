@@ -34,7 +34,7 @@ Logs land in `hop/logs/`.
 ## Reset the target
 
 ```bash
-./bin/reset-target.sh             # truncates every table in `marketplace`
+./bin/reset-melvis.sh             # drop + rebuild `melvis`, including the pre-existing seed
 ```
 
 ## Open the GUI
@@ -47,6 +47,23 @@ HOP_PROJECT=oferta $HOP_HOME/hop-gui.sh
 ## Check the result
 
 ```bash
-docker compose exec -T mariadb mariadb -uroot -proot marketplace -e "
-SELECT merge_source, COUNT(*) FROM accounts GROUP BY merge_source;"
+docker compose exec -T mariadb mariadb -uroot -proot melvis -e "
+SELECT COUNT(*) AS master_ids, SUM(mi_co_id>0) AS matched_existing, SUM(mi_co_id=0) AS minted
+FROM customer_master_id_lookup;"
 ```
+
+## Constantine constants
+
+`hop/datasets/constantine.csv` holds all 420 x-consts, copied from
+`apps/melvis/Core/Tools/Constantine.php`. It is committed, so nothing here needs a melvis
+checkout. `00-constantine.hpl` loads it into the `constantine` table and the pipelines
+resolve `mi_rel_type` against that.
+
+To refresh it when the PHP changes, from a melvis checkout:
+
+```bash
+grep -oE 'const [A-Za-z_]+ *= *[0-9]+' Core/Tools/Constantine.php \
+  | sed -E 's/const ([A-Za-z_]+) *= *([0-9]+)/\2,\1/'
+```
+
+then reconcile against `ConstantineMapping` for the module and app class columns.

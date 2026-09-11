@@ -1,3 +1,0 @@
-acc_id_u,email_u,display_u,phone,addresses,status_u,last_seen_u,created_u,side_u
-000ef25f-d426-321a-a7be-1839085f63bf,alice@example.com,Alice Berg,90000001,"[{""kind"":""shipping"",""city"":""Oslo""}]",active,2026-01-05 08:00:00,2024-03-01 10:00:00,buyer
-75852db4-8789-32d3-aa98-82dee77bc46e,bob@example.com,Bob Dahl,90000002,"[{""kind"":""billing"",""city"":""Bergen""}]",active,2026-02-10 09:30:00,2024-05-20 12:00:00,buyer

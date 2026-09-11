@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>04-products</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <pipeline_type>Normal</pipeline_type>
+    <pipeline_status>-1</pipeline_status>
+    <parameters/>
+    <description>Their products -&gt; econ_product.</description>
+  </info>
+  <transform>
+    <name>products (mssql)</name>
+    <type>TableInput</type>
+    <connection>mssql_source</connection>
+    <sql>-- pr_slug is company+sku because their sku is only unique within a company, and the
+-- slug is what 06 uses to find the pr_id MariaDB minted.
+SELECT p.id AS oferta_id,
+       p.name AS pr_name, p.description AS pr_description,
+       LOWER(CONCAT(CAST(p.company_id AS VARCHAR(10)), &#x27;-&#x27;, p.sku)) AS pr_slug,
+       CAST(p.price AS DECIMAL(10,2)) AS pr_price,
+       CASE p.status WHEN &#x27;active&#x27; THEN 1 WHEN &#x27;draft&#x27; THEN 0
+                     WHEN &#x27;out_of_stock&#x27; THEN 2 ELSE 3 END AS pr_status,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, p.created_at) AS metaregtime
+FROM products p</sql>
+    <limit>0</limit>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lookup/>
+    <sql_from_file/>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <GUI><xloc>112</xloc><yloc>128</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>melvis defaults</name>
+    <type>Calculator</type>
+    <description>Columns Melvis requires that their catalogue has no equivalent for. Written explicitly rather than left to the DDL default, so the choice is visible here.</description>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>tp_id</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>pr_customPrice</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>25.00</field_a><field_name>pr_vat</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Number</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>pr_unit</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>pr_unit_value</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>pr_public</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>pr_payment_type</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>metaunit</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <failIfNoFile>Y</failIfNoFile>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>288</xloc><yloc>128</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>public name</name>
+    <type>StringOperations</type>
+    <description>Copies pr_name into pr_public_name. Select values refuses to emit one field twice, and Calculator&#x27;s COPY_OF_FIELD creates the field but leaves it null - this is the one that works.</description>
+    <fields>
+      <field><in_stream_name>pr_name</in_stream_name><out_stream_name>pr_public_name</out_stream_name><trim_type>both</trim_type><lower_upper>none</lower_upper><padding_type>none</padding_type><pad_char/><pad_len/><init_cap>no</init_cap><mask_xml>none</mask_xml><digits>none</digits><remove_special_characters>none</remove_special_characters></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>448</xloc><yloc>128</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ econ_product</name>
+    <type>TableOutput</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>econ_product</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field></return_field>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>pr_name</stream_name><column_name>pr_name</column_name></field>
+      <field><stream_name>pr_description</stream_name><column_name>pr_description</column_name></field>
+      <field><stream_name>pr_slug</stream_name><column_name>pr_slug</column_name></field>
+      <field><stream_name>tp_id</stream_name><column_name>tp_id</column_name></field>
+      <field><stream_name>pr_price</stream_name><column_name>pr_price</column_name></field>
+      <field><stream_name>pr_customPrice</stream_name><column_name>pr_customPrice</column_name></field>
+      <field><stream_name>pr_vat</stream_name><column_name>pr_vat</column_name></field>
+      <field><stream_name>pr_unit</stream_name><column_name>pr_unit</column_name></field>
+      <field><stream_name>pr_unit_value</stream_name><column_name>pr_unit_value</column_name></field>
+      <field><stream_name>pr_status</stream_name><column_name>pr_status</column_name></field>
+      <field><stream_name>pr_public</stream_name><column_name>pr_public</column_name></field>
+      <field><stream_name>pr_public_name</stream_name><column_name>pr_public_name</column_name></field>
+      <field><stream_name>pr_payment_type</stream_name><column_name>pr_payment_type</column_name></field>
+      <field><stream_name>metaregtime</stream_name><column_name>metaregtime</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>640</xloc><yloc>128</yloc></GUI>
+    <attributes/>
+  </transform>
+  <order>
+    <hop><from>products (mssql)</from><to>melvis defaults</to><enabled>Y</enabled></hop>
+    <hop><from>melvis defaults</from><to>public name</to><enabled>Y</enabled></hop>
+    <hop><from>public name</from><to>→ econ_product</to><enabled>Y</enabled></hop>
+  </order>
+  <notepads/>
+  <attributes/>
+  <transform_error_handling/>
+</pipeline>

@@ -29,6 +29,8 @@ if [ $# -eq 0 ]; then
 fi
 
 for pipeline in "$@"; do
+    # hop-run rejects relative paths, so resolve anything the caller passed by hand.
+    case "$pipeline" in /*) ;; *) pipeline="$(cd "$(dirname "$pipeline")" && pwd)/$(basename "$pipeline")" ;; esac
     name=$(basename "$pipeline" .hpl)
     log="$LOG_DIR/${STAMP}-${name}.log"
     echo "--> $name  (log: $log)"

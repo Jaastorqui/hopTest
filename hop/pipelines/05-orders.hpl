@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>05-orders</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <pipeline_type>Normal</pipeline_type>
+    <pipeline_status>-1</pipeline_status>
+    <parameters/>
+    <description>Their orders -&gt; econ_order. or_id auto-generated; (mi_id, mi_rel_type) assigned from the master id and the Constantine name.</description>
+  </info>
+  <transform>
+    <name>orders (mssql)</name>
+    <type>TableInput</type>
+    <connection>mssql_source</connection>
+    <sql>-- or_id is auto_increment: Melvis mints it, we never choose it and never carry
+-- theirs. What makes the order findable again is the natural key (owning company,
+-- placed_at) - unique across all 8000 of theirs, checked before relying on it.
+SELECT LTRIM(RTRIM(c.org_number))             AS co_org_nr,
+       CASE o.status WHEN &#x27;pending&#x27; THEN 0 WHEN &#x27;paid&#x27; THEN 1 WHEN &#x27;shipped&#x27; THEN 2
+                     WHEN &#x27;completed&#x27; THEN 3 WHEN &#x27;cancelled&#x27; THEN 4 ELSE 5 END AS or_status,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, o.placed_at)              AS or_start_date,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, DATEADD(YEAR, 1, o.placed_at)) AS or_end_date,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, o.placed_at)              AS or_timestamp,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, o.placed_at)              AS metaregtime
+FROM orders o
+CROSS APPLY (SELECT TOP 1 company_id FROM order_items WHERE order_id = o.id ORDER BY id) oi
+JOIN companies c ON c.id = oi.company_id</sql>
+    <limit>0</limit>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lookup/>
+    <sql_from_file/>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <GUI><xloc>112</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>master id by org nr</name>
+    <type>DBLookup</type>
+    <description>The selling company as a master id, found by org number.</description>
+    <connection>mariadb_target</connection>
+    <cache>Y</cache>
+    <cache_load_all>Y</cache_load_all>
+    <cache_size>0</cache_size>
+    <lookup>
+      <schema/>
+      <table>customer_master_id_lookup</table>
+      <orderby/>
+      <fail_on_multiple>N</fail_on_multiple>
+      <eat_row_on_failure>N</eat_row_on_failure>
+      <key><name>co_org_nr</name><field>mi_org_nr</field><condition>=</condition><name2/></key>
+      <value><name>mi_id</name><rename>mi_id</rename><default>0</default><type>Integer</type></value>
+    </lookup>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>272</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>owner is a company</name>
+    <type>Constant</type>
+    <description>The NAME, not the number. Which const an econ_order carries is this pipeline&#x27;s decision; what number that const has is Constantine.php&#x27;s business.</description>
+    <fields>
+      <field><name>const_name</name><type>String</type><nullif>CompaniesConst</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>432</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>const -> number</name>
+    <type>DBLookup</type>
+    <description>1002 appears nowhere in this pipeline, so a renumbered const cannot silently repoint our orders at the wrong kind of entity.</description>
+    <connection>mariadb_target</connection>
+    <cache>Y</cache>
+    <cache_load_all>Y</cache_load_all>
+    <cache_size>0</cache_size>
+    <lookup>
+      <schema/>
+      <table>constantine</table>
+      <orderby/>
+      <fail_on_multiple>N</fail_on_multiple>
+      <eat_row_on_failure>N</eat_row_on_failure>
+      <key><name>const_name</name><field>const_name</field><condition>=</condition><name2/></key>
+      <value><name>mi_rel_type</name><rename>mi_rel_type</rename><default>0</default><type>Integer</type></value>
+    </lookup>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>576</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>melvis defaults</name>
+    <type>Calculator</type>
+    <description/>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>pd_id</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>or_type</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>or_payment_type</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>12</field_a><field_name>or_payment_frequency</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>or_renew</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>un_id</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>or_verif_required</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>ve_timestamp</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>or_new_order</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>or_transferred_order</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>or_owner</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>or_split</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>or_flags</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>metaunit</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>source_id</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <failIfNoFile>Y</failIfNoFile>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>736</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>owner resolved?</name>
+    <type>FilterRows</type>
+    <description>An econ_order with mi_id 0 is owned by nobody. Melvis has no foreign key to stop that, so the pipeline has to.</description>
+    <send_true_to>cannot place this order</send_true_to>
+    <send_false_to>pick target columns</send_false_to>
+    <compare>
+      <condition>
+        <negated>N</negated>
+        <leftvalue>mi_id</leftvalue>
+        <function>=</function>
+        <rightvalue/>
+        <value>
+          <name>constant</name>
+          <type>Integer</type>
+          <text>0</text>
+          <length>-1</length>
+          <precision>0</precision>
+          <isnull>N</isnull>
+          <mask/>
+        </value>
+      </condition>
+    </compare>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>896</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>pick target columns</name>
+    <type>SelectValues</type>
+    <description/>
+    <fields>
+      <field><name>mi_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>mi_rel_type</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>pd_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_type</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_status</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_payment_type</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_start_date</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_end_date</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_payment_frequency</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_renew</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_timestamp</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>un_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_verif_required</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ve_timestamp</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_new_order</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_transferred_order</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_owner</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_split</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>or_flags</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaregtime</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaunit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1088</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ econ_order</name>
+    <type>TableOutput</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>econ_order</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field></return_field>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>mi_id</stream_name><column_name>mi_id</column_name></field>
+      <field><stream_name>mi_rel_type</stream_name><column_name>mi_rel_type</column_name></field>
+      <field><stream_name>pd_id</stream_name><column_name>pd_id</column_name></field>
+      <field><stream_name>or_type</stream_name><column_name>or_type</column_name></field>
+      <field><stream_name>or_status</stream_name><column_name>or_status</column_name></field>
+      <field><stream_name>or_payment_type</stream_name><column_name>or_payment_type</column_name></field>
+      <field><stream_name>or_start_date</stream_name><column_name>or_start_date</column_name></field>
+      <field><stream_name>or_end_date</stream_name><column_name>or_end_date</column_name></field>
+      <field><stream_name>or_payment_frequency</stream_name><column_name>or_payment_frequency</column_name></field>
+      <field><stream_name>or_renew</stream_name><column_name>or_renew</column_name></field>
+      <field><stream_name>or_timestamp</stream_name><column_name>or_timestamp</column_name></field>
+      <field><stream_name>un_id</stream_name><column_name>un_id</column_name></field>
+      <field><stream_name>or_verif_required</stream_name><column_name>or_verif_required</column_name></field>
+      <field><stream_name>ve_timestamp</stream_name><column_name>ve_timestamp</column_name></field>
+      <field><stream_name>or_new_order</stream_name><column_name>or_new_order</column_name></field>
+      <field><stream_name>or_transferred_order</stream_name><column_name>or_transferred_order</column_name></field>
+      <field><stream_name>or_owner</stream_name><column_name>or_owner</column_name></field>
+      <field><stream_name>or_split</stream_name><column_name>or_split</column_name></field>
+      <field><stream_name>or_flags</stream_name><column_name>or_flags</column_name></field>
+      <field><stream_name>metaregtime</stream_name><column_name>metaregtime</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1264</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>cannot place this order</name>
+    <type>Constant</type>
+    <description/>
+    <fields>
+      <field><name>source_table</name><type>String</type><nullif>orders</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+      <field><name>reason</name><type>String</type><nullif>no master id for the selling company</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1088</xloc><yloc>272</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>pick reject columns</name>
+    <type>SelectValues</type>
+    <description/>
+    <fields>
+      <field><name>source_table</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>source_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>mi_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>mi_rel_type</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>const_name</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>reason</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaregtime</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaunit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1264</xloc><yloc>272</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ _migration_rejected</name>
+    <type>TableOutput</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>_migration_rejected</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field></return_field>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>source_table</stream_name><column_name>source_table</column_name></field>
+      <field><stream_name>source_id</stream_name><column_name>source_id</column_name></field>
+      <field><stream_name>mi_id</stream_name><column_name>mi_id</column_name></field>
+      <field><stream_name>mi_rel_type</stream_name><column_name>mi_rel_type</column_name></field>
+      <field><stream_name>const_name</stream_name><column_name>const_name</column_name></field>
+      <field><stream_name>reason</stream_name><column_name>reason</column_name></field>
+      <field><stream_name>metaregtime</stream_name><column_name>metaregtime</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1440</xloc><yloc>272</yloc></GUI>
+    <attributes/>
+  </transform>
+  <order>
+    <hop><from>orders (mssql)</from><to>master id by org nr</to><enabled>Y</enabled></hop>
+    <hop><from>master id by org nr</from><to>owner is a company</to><enabled>Y</enabled></hop>
+    <hop><from>owner is a company</from><to>const -> number</to><enabled>Y</enabled></hop>
+    <hop><from>const -> number</from><to>melvis defaults</to><enabled>Y</enabled></hop>
+    <hop><from>melvis defaults</from><to>owner resolved?</to><enabled>Y</enabled></hop>
+    <hop><from>owner resolved?</from><to>pick target columns</to><enabled>Y</enabled></hop>
+    <hop><from>pick target columns</from><to>→ econ_order</to><enabled>Y</enabled></hop>
+    <hop><from>owner resolved?</from><to>cannot place this order</to><enabled>Y</enabled></hop>
+    <hop><from>cannot place this order</from><to>pick reject columns</to><enabled>Y</enabled></hop>
+    <hop><from>pick reject columns</from><to>→ _migration_rejected</to><enabled>Y</enabled></hop>
+  </order>
+  <notepads/>
+  <attributes/>
+  <transform_error_handling/>
+</pipeline>

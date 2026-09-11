@@ -1,0 +1,408 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>06-order-lines</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <pipeline_type>Normal</pipeline_type>
+    <pipeline_status>-1</pipeline_status>
+    <parameters/>
+    <description>Their order_items -&gt; econ_order_line. Parent and product both found by natural key.</description>
+  </info>
+  <transform>
+    <name>order_items (mssql)</name>
+    <type>TableInput</type>
+    <connection>mssql_source</connection>
+    <sql>-- Re-reading the origin for BOTH natural keys: (org_nr, placed_at) finds the parent
+-- econ_order, and company+sku finds the econ_product. No id from their system is used
+-- as a key here - only values both systems independently know.
+SELECT LTRIM(RTRIM(c.org_number))     AS co_org_nr,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, o.placed_at)      AS or_timestamp,
+       LOWER(CONCAT(CAST(oi.company_id AS VARCHAR(10)), &#x27;-&#x27;, p.sku)) AS pr_slug,
+       p.name                         AS ol_name,
+       p.description                  AS ol_description,
+       CAST(oi.unit_price AS DECIMAL(10,2))               AS ol_basic_price,
+       CAST(oi.unit_price * oi.quantity AS DECIMAL(10,2)) AS ol_price,
+       oi.quantity                    AS ol_total_quantity,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, o.placed_at)      AS ol_start_date,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, DATEADD(YEAR, 1, o.placed_at)) AS ol_end_date,
+       DATEDIFF(SECOND, &#x27;1970-01-01&#x27;, o.placed_at)      AS metaregtime
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+JOIN orders   o ON o.id = oi.order_id
+CROSS APPLY (SELECT TOP 1 company_id FROM order_items x WHERE x.order_id = o.id ORDER BY x.id) owner
+JOIN companies c ON c.id = owner.company_id</sql>
+    <limit>0</limit>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lookup/>
+    <sql_from_file/>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <GUI><xloc>112</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>master id by org nr</name>
+    <type>DBLookup</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <cache>Y</cache>
+    <cache_load_all>Y</cache_load_all>
+    <cache_size>0</cache_size>
+    <lookup>
+      <schema/>
+      <table>customer_master_id_lookup</table>
+      <orderby/>
+      <fail_on_multiple>N</fail_on_multiple>
+      <eat_row_on_failure>N</eat_row_on_failure>
+      <key><name>co_org_nr</name><field>mi_org_nr</field><condition>=</condition><name2/></key>
+      <value><name>mi_id</name><rename>mi_id</rename><default>0</default><type>Integer</type></value>
+    </lookup>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>272</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>parent order</name>
+    <type>DBLookup</type>
+    <description>Two-column natural key, because econ_order carries nothing of theirs to match on. Verified unique in the source before relying on it - 8000 orders, 8000 distinct (company, placed_at) pairs.</description>
+    <connection>mariadb_target</connection>
+    <cache>Y</cache>
+    <cache_load_all>Y</cache_load_all>
+    <cache_size>0</cache_size>
+    <lookup>
+      <schema/>
+      <table>econ_order</table>
+      <orderby/>
+      <fail_on_multiple>N</fail_on_multiple>
+      <eat_row_on_failure>N</eat_row_on_failure>
+      <key><name>mi_id</name><field>mi_id</field><condition>=</condition><name2/></key>
+      <key><name>or_timestamp</name><field>or_timestamp</field><condition>=</condition><name2/></key>
+      <value><name>or_id</name><rename>or_id</rename><default>0</default><type>Integer</type></value>
+    </lookup>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>432</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>product id by slug</name>
+    <type>DBLookup</type>
+    <description>company+sku, the natural key 04 wrote into pr_slug.</description>
+    <connection>mariadb_target</connection>
+    <cache>Y</cache>
+    <cache_load_all>Y</cache_load_all>
+    <cache_size>0</cache_size>
+    <lookup>
+      <schema/>
+      <table>econ_product</table>
+      <orderby/>
+      <fail_on_multiple>N</fail_on_multiple>
+      <eat_row_on_failure>N</eat_row_on_failure>
+      <key><name>pr_slug</name><field>pr_slug</field><condition>=</condition><name2/></key>
+      <value><name>pr_id</name><rename>pr_id</rename><default>0</default><type>Integer</type></value>
+    </lookup>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>592</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>melvis defaults</name>
+    <type>Calculator</type>
+    <description/>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>tp_id</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0.00</field_a><field_name>ol_discount_amount</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Number</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0.00</field_a><field_name>ol_discount_percent</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Number</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>ol_discount_type</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>25.00</field_a><field_name>ol_vat</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Number</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>ol_unit</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>ol_unit_value</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>ol_refresh_frequency</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>ol_refresh_interval</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>ol_renew</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>ol_renew_order</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>dc_id</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>ol_version</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>1</field_a><field_name>metaunit</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <calculation><calc_type>CONSTANT</calc_type><field_a>0</field_a><field_name>source_id</field_name><remove>N</remove><value_length>-1</value_length><value_precision>-1</value_precision><value_type>Integer</value_type></calculation>
+    <failIfNoFile>Y</failIfNoFile>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>752</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>empty strings</name>
+    <type>Constant</type>
+    <description>Melvis stores empty strings, not NULL, in these varchars.</description>
+    <fields>
+      <field><name>tp_slug</name><type>String</type><nullif>oferta-line</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+      <field><name>ol_unit_value_name</name><type>String</type><nullif>stk</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>896</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>parent and product found?</name>
+    <type>FilterRows</type>
+    <description/>
+    <send_true_to>orphan line</send_true_to>
+    <send_false_to>product resolved?</send_false_to>
+    <compare>
+      <condition>
+        <negated>N</negated>
+        <leftvalue>or_id</leftvalue>
+        <function>=</function>
+        <rightvalue/>
+        <value>
+          <name>constant</name>
+          <type>Integer</type>
+          <text>0</text>
+          <length>-1</length>
+          <precision>0</precision>
+          <isnull>N</isnull>
+          <mask/>
+        </value>
+      </condition>
+    </compare>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1040</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>product resolved?</name>
+    <type>FilterRows</type>
+    <description/>
+    <send_true_to>orphan line</send_true_to>
+    <send_false_to>pick target columns</send_false_to>
+    <compare>
+      <condition>
+        <negated>N</negated>
+        <leftvalue>pr_id</leftvalue>
+        <function>=</function>
+        <rightvalue/>
+        <value>
+          <name>constant</name>
+          <type>Integer</type>
+          <text>0</text>
+          <length>-1</length>
+          <precision>0</precision>
+          <isnull>N</isnull>
+          <mask/>
+        </value>
+      </condition>
+    </compare>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1200</xloc><yloc>224</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>pick target columns</name>
+    <type>SelectValues</type>
+    <description/>
+    <fields>
+      <field><name>or_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>pr_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>tp_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>tp_slug</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_name</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_description</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_basic_price</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_price</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_discount_amount</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_discount_percent</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_discount_type</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_vat</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_start_date</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_end_date</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_unit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_unit_value</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_unit_value_name</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_refresh_frequency</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_refresh_interval</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_total_quantity</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_renew</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_renew_order</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>dc_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ol_version</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaregtime</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaunit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1376</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ econ_order_line</name>
+    <type>TableOutput</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>econ_order_line</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field></return_field>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>or_id</stream_name><column_name>or_id</column_name></field>
+      <field><stream_name>pr_id</stream_name><column_name>pr_id</column_name></field>
+      <field><stream_name>tp_id</stream_name><column_name>tp_id</column_name></field>
+      <field><stream_name>tp_slug</stream_name><column_name>tp_slug</column_name></field>
+      <field><stream_name>ol_name</stream_name><column_name>ol_name</column_name></field>
+      <field><stream_name>ol_description</stream_name><column_name>ol_description</column_name></field>
+      <field><stream_name>ol_basic_price</stream_name><column_name>ol_basic_price</column_name></field>
+      <field><stream_name>ol_price</stream_name><column_name>ol_price</column_name></field>
+      <field><stream_name>ol_discount_amount</stream_name><column_name>ol_discount_amount</column_name></field>
+      <field><stream_name>ol_discount_percent</stream_name><column_name>ol_discount_percent</column_name></field>
+      <field><stream_name>ol_discount_type</stream_name><column_name>ol_discount_type</column_name></field>
+      <field><stream_name>ol_vat</stream_name><column_name>ol_vat</column_name></field>
+      <field><stream_name>ol_start_date</stream_name><column_name>ol_start_date</column_name></field>
+      <field><stream_name>ol_end_date</stream_name><column_name>ol_end_date</column_name></field>
+      <field><stream_name>ol_unit</stream_name><column_name>ol_unit</column_name></field>
+      <field><stream_name>ol_unit_value</stream_name><column_name>ol_unit_value</column_name></field>
+      <field><stream_name>ol_unit_value_name</stream_name><column_name>ol_unit_value_name</column_name></field>
+      <field><stream_name>ol_refresh_frequency</stream_name><column_name>ol_refresh_frequency</column_name></field>
+      <field><stream_name>ol_refresh_interval</stream_name><column_name>ol_refresh_interval</column_name></field>
+      <field><stream_name>ol_total_quantity</stream_name><column_name>ol_total_quantity</column_name></field>
+      <field><stream_name>ol_renew</stream_name><column_name>ol_renew</column_name></field>
+      <field><stream_name>ol_renew_order</stream_name><column_name>ol_renew_order</column_name></field>
+      <field><stream_name>dc_id</stream_name><column_name>dc_id</column_name></field>
+      <field><stream_name>ol_version</stream_name><column_name>ol_version</column_name></field>
+      <field><stream_name>metaregtime</stream_name><column_name>metaregtime</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1552</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>orphan line</name>
+    <type>Constant</type>
+    <description/>
+    <fields>
+      <field><name>source_table</name><type>String</type><nullif>order_items</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+      <field><name>reason</name><type>String</type><nullif>parent order or product did not migrate</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+      <field><name>mi_rel_type</name><type>Integer</type><nullif>0</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+      <field><name>const_name</name><type>String</type><nullif></nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1200</xloc><yloc>368</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>pick reject columns</name>
+    <type>SelectValues</type>
+    <description/>
+    <fields>
+      <field><name>source_table</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>source_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>mi_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>mi_rel_type</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>const_name</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>reason</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaregtime</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaunit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1376</xloc><yloc>368</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ _migration_rejected </name>
+    <type>TableOutput</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>_migration_rejected</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field></return_field>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>source_table</stream_name><column_name>source_table</column_name></field>
+      <field><stream_name>source_id</stream_name><column_name>source_id</column_name></field>
+      <field><stream_name>mi_id</stream_name><column_name>mi_id</column_name></field>
+      <field><stream_name>mi_rel_type</stream_name><column_name>mi_rel_type</column_name></field>
+      <field><stream_name>const_name</stream_name><column_name>const_name</column_name></field>
+      <field><stream_name>reason</stream_name><column_name>reason</column_name></field>
+      <field><stream_name>metaregtime</stream_name><column_name>metaregtime</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1552</xloc><yloc>368</yloc></GUI>
+    <attributes/>
+  </transform>
+  <order>
+    <hop><from>order_items (mssql)</from><to>master id by org nr</to><enabled>Y</enabled></hop>
+    <hop><from>master id by org nr</from><to>parent order</to><enabled>Y</enabled></hop>
+    <hop><from>parent order</from><to>product id by slug</to><enabled>Y</enabled></hop>
+    <hop><from>product id by slug</from><to>melvis defaults</to><enabled>Y</enabled></hop>
+    <hop><from>melvis defaults</from><to>empty strings</to><enabled>Y</enabled></hop>
+    <hop><from>empty strings</from><to>parent and product found?</to><enabled>Y</enabled></hop>
+    <hop><from>parent and product found?</from><to>product resolved?</to><enabled>Y</enabled></hop>
+    <hop><from>product resolved?</from><to>pick target columns</to><enabled>Y</enabled></hop>
+    <hop><from>pick target columns</from><to>→ econ_order_line</to><enabled>Y</enabled></hop>
+    <hop><from>parent and product found?</from><to>orphan line</to><enabled>Y</enabled></hop>
+    <hop><from>product resolved?</from><to>orphan line</to><enabled>Y</enabled></hop>
+    <hop><from>orphan line</from><to>pick reject columns</to><enabled>Y</enabled></hop>
+    <hop><from>pick reject columns</from><to>→ _migration_rejected </to><enabled>Y</enabled></hop>
+  </order>
+  <notepads/>
+  <attributes/>
+  <transform_error_handling/>
+</pipeline>

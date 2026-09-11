@@ -1,7 +1,31 @@
 {
-  "metadataBaseFolder" : "${PROJECT_HOME}/metadata",
-  "unitTestsBasePath" : "${PROJECT_HOME}",
-  "dataSetsCsvFolder" : "${PROJECT_HOME}/datasets",
-  "enforcingExecutionInHome" : true,
-  "parentProjectName" : "default"
+  "metadataBaseFolder": "${PROJECT_HOME}/metadata",
+  "unitTestsBasePath": "${PROJECT_HOME}",
+  "dataSetsCsvFolder": "${PROJECT_HOME}/datasets",
+  "enforcingExecutionInHome": true,
+  "parentProjectName": "default",
+  "config": {
+    "variables": [
+      {
+        "name": "CONST_COMPANIES",
+        "value": "1002",
+        "description": "Constantine::CompaniesConst"
+      },
+      {
+        "name": "CONST_ORDER",
+        "value": "2004",
+        "description": "Constantine::OrderConst"
+      },
+      {
+        "name": "CONST_PRODUCT",
+        "value": "2007",
+        "description": "Constantine::ProductConst"
+      },
+      {
+        "name": "CONST_SYSTEM_USERS",
+        "value": "7007",
+        "description": "Constantine::SystemUsersConst"
+      }
+    ]
+  }
 }

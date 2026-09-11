@@ -6,7 +6,7 @@
       "pluginName": "MariaDB",
       "hostname": "localhost",
       "port": "3306",
-      "databaseName": "marketplace",
+      "databaseName": "melvis",
       "username": "root",
       "password": "root",
       "accessType": 0,
