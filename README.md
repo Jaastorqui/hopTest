@@ -44,5 +44,3 @@ HOP_PROJECT=oferta $HOP_HOME/hop-gui.sh
 docker compose exec -T mariadb mariadb -uroot -proot marketplace -e "
 SELECT merge_source, COUNT(*) FROM accounts GROUP BY merge_source;"
 ```
-
-See `hop/LIMITATIONS.md` for what each pipeline does and cannot do.
