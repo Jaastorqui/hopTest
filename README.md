@@ -25,6 +25,12 @@ $HOP_HOME/hop-conf.sh -pc -p oferta -ph "$(pwd)/hop"
 
 Logs land in `hop/logs/`.
 
+## Run the unit tests
+
+```bash
+./bin/hop-test.sh                 # no database needed; fails on a golden-data mismatch
+```
+
 ## Reset the target
 
 ```bash

@@ -1,0 +1,3 @@
+acc_id_s,email_s,display_s,status_s,last_seen_s,created_s,side_s
+75852db4-8789-32d3-aa98-82dee77bc46e,bob@example.com,Robert Dahl,active,2026-02-11 07:00:00,2025-01-15 08:00:00,staff
+c8f5e506-8b50-3321-a783-668d7e6a0764,carol@example.com,Carol Ness,disabled,2025-12-01 16:45:00,2025-06-01 09:00:00,staff

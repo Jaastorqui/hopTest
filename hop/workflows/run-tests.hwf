@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workflow>
+  <name>run-tests</name>
+  <name_sync_with_filename>Y</name_sync_with_filename>
+  <description>Runs the pipeline unit tests. Fails if any golden data set does not match.</description>
+  <created_user>-</created_user>
+  <parameters/>
+  <actions>
+    <action>
+      <name>Start</name>
+      <type>SPECIAL</type>
+      <start>Y</start>
+      <dummy>N</dummy>
+      <repeat>N</repeat>
+      <schedulerType>0</schedulerType>
+      <intervalSeconds>0</intervalSeconds>
+      <intervalMinutes>60</intervalMinutes>
+      <hour>12</hour>
+      <minute>0</minute>
+      <weekDay>1</weekDay>
+      <dayOfMonth>1</dayOfMonth>
+      <parallel>N</parallel>
+      <xloc>96</xloc>
+      <yloc>96</yloc>
+      <attributes_hac/>
+    </action>
+    <action>
+      <name>unit tests</name>
+      <type>RunPipelineTests</type>
+      <description/>
+      <test_names>
+        <test_name><name>02-accounts-merge</name></test_name>
+      </test_names>
+      <parallel>N</parallel>
+      <xloc>272</xloc>
+      <yloc>96</yloc>
+      <attributes_hac/>
+    </action>
+  </actions>
+  <hops>
+    <hop><from>Start</from><to>unit tests</to><enabled>Y</enabled><evaluation>Y</evaluation><unconditional>Y</unconditional></hop>
+  </hops>
+  <notepads/>
+  <attributes/>
+</workflow>
