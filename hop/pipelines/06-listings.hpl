@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>06-listings</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <pipeline_type>Normal</pipeline_type>
+    <pipeline_status>-1</pipeline_status>
+    <parameters/>
+    <description>products + images -&gt; listings. If null, number range, concat fields.</description>
+  </info>
+  <transform>
+    <name>products (mssql)</name>
+    <type>TableInput</type>
+    <connection>mssql_source</connection>
+    <sql>WITH tree AS (
+    SELECT c.id, c.parent_id, c.name, CAST(c.slug AS VARCHAR(255)) AS path, 0 AS depth
+    FROM categories c WHERE c.parent_id IS NULL
+    UNION ALL
+    SELECT c.id, c.parent_id, c.name, CAST(t.path + &#x27;/&#x27; + c.slug AS VARCHAR(255)), t.depth + 1
+    FROM categories c JOIN tree t ON t.id = c.parent_id
+)
+SELECT LOWER(SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),1,8) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),9,4) + &#x27;-3&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),14,3) + &#x27;-a&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),18,3) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),21,12)) AS id,
+       LOWER(SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;companies:&#x27; + CAST(p.company_id AS VARCHAR(20))), 2),1,8) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;companies:&#x27; + CAST(p.company_id AS VARCHAR(20))), 2),9,4) + &#x27;-3&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;companies:&#x27; + CAST(p.company_id AS VARCHAR(20))), 2),14,3) + &#x27;-a&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;companies:&#x27; + CAST(p.company_id AS VARCHAR(20))), 2),18,3) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;companies:&#x27; + CAST(p.company_id AS VARCHAR(20))), 2),21,12)) AS organisation_id,
+       t.path AS category_path,
+       p.sku, p.name AS title, p.description AS body,
+       CAST(ROUND(p.price * 100, 0) AS BIGINT) AS price_minor,
+       p.currency, p.stock, p.status,
+       (SELECT pi.url AS url, pi.alt_text AS alt, pi.sort_order AS sort
+        FROM product_images pi WHERE pi.product_id = p.id
+        ORDER BY pi.sort_order FOR JSON PATH) AS media,
+       r.rating_avg, ISNULL(r.rating_count, 0) AS rating_count,
+       CONVERT(VARCHAR(19), p.created_at, 120) AS created_at,
+       &#x27;products&#x27; AS source_table, CAST(p.id AS VARCHAR(40)) AS source_id,
+       &#x27;listings&#x27; AS target_table, LOWER(SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),1,8) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),9,4) + &#x27;-3&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),14,3) + &#x27;-a&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),18,3) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;products:&#x27; + CAST(p.id AS VARCHAR(20))), 2),21,12)) AS target_id,
+       &#x27;derived uuid&#x27; AS note
+FROM products p
+JOIN tree t ON t.id = p.category_id
+LEFT JOIN (SELECT product_id,
+                  CAST(AVG(CAST(rating AS DECIMAL(5,2))) AS DECIMAL(3,2)) AS rating_avg,
+                  COUNT(*) AS rating_count
+           FROM reviews GROUP BY product_id) r ON r.product_id = p.id</sql>
+    <limit>0</limit>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lookup/>
+    <sql_from_file/>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <GUI><xloc>112</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>unrated = 0.00</name>
+    <type>IfNull</type>
+    <description>A product nobody reviewed has no average. NULL sorts oddly and breaks AVG() downstream, so it becomes 0.00 here rather than in every report later.</description>
+    <replaceAllByValue/>
+    <replaceAllMask/>
+    <selectFields>Y</selectFields>
+    <selectValuesType>N</selectValuesType>
+    <setEmptyStringAll>N</setEmptyStringAll>
+    <valuetypes>
+      </valuetypes>
+    <fields>
+      <field><name>rating_avg</name><value>0.00</value><mask/><set_empty_string>N</set_empty_string></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>272</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>price band</name>
+    <type>NumberRange</type>
+    <description>Price is in ore. 500 kr / 2000 kr / 10000 kr boundaries, bucketed once at write time.</description>
+    <inputField>price_minor</inputField>
+    <outputField>price_band</outputField>
+    <fallBackValue>budget</fallBackValue>
+    <rules>
+      <rule><lower_bound>-1.7976931348623157E308</lower_bound><upper_bound>50000.0</upper_bound><value>budget</value></rule>
+      <rule><lower_bound>50000.0</lower_bound><upper_bound>200000.0</upper_bound><value>mid</value></rule>
+      <rule><lower_bound>200000.0</lower_bound><upper_bound>1000000.0</upper_bound><value>premium</value></rule>
+      <rule><lower_bound>1000000.0</lower_bound><upper_bound>1.7976931348623157E308</upper_bound><value>luxury</value></rule>
+    </rules>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>432</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>search blob</name>
+    <type>ConcatFields</type>
+    <description>One text column the search index can read without joining three.</description>
+    <ConcatFields><removeSelectedFields>N</removeSelectedFields><targetFieldLength>0</targetFieldLength><targetFieldName>search_blob</targetFieldName></ConcatFields>
+    <enclosure/>
+    <fields>
+      <field><currency/><decimal/><format/><group/><length>-1</length><name>title</name><nullif/><precision>-1</precision><trim_type>both</trim_type><type>String</type></field>
+      <field><currency/><decimal/><format/><group/><length>-1</length><name>sku</name><nullif/><precision>-1</precision><trim_type>both</trim_type><type>String</type></field>
+      <field><currency/><decimal/><format/><group/><length>-1</length><name>category_path</name><nullif/><precision>-1</precision><trim_type>both</trim_type><type>String</type></field>
+    </fields>
+    <separator> | </separator>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>592</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>+ metaunit</name>
+    <type>Constant</type>
+    <description/>
+    <fields>
+      <field><name>metaunit</name><type>Integer</type><nullif>111</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>752</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>pick target columns</name>
+    <type>SelectValues</type>
+    <description/>
+    <fields>
+      <field><name>id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>organisation_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>category_path</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>sku</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>title</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>body</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>price_minor</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>price_band</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>currency</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>stock</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>status</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>media</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>rating_avg</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>rating_count</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>search_blob</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>created_at</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaunit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>896</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ listings</name>
+    <type>TableOutput</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>listings</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field/>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>id</stream_name><column_name>id</column_name></field>
+      <field><stream_name>organisation_id</stream_name><column_name>organisation_id</column_name></field>
+      <field><stream_name>category_path</stream_name><column_name>category_path</column_name></field>
+      <field><stream_name>sku</stream_name><column_name>sku</column_name></field>
+      <field><stream_name>title</stream_name><column_name>title</column_name></field>
+      <field><stream_name>body</stream_name><column_name>body</column_name></field>
+      <field><stream_name>price_minor</stream_name><column_name>price_minor</column_name></field>
+      <field><stream_name>price_band</stream_name><column_name>price_band</column_name></field>
+      <field><stream_name>currency</stream_name><column_name>currency</column_name></field>
+      <field><stream_name>stock</stream_name><column_name>stock</column_name></field>
+      <field><stream_name>status</stream_name><column_name>status</column_name></field>
+      <field><stream_name>media</stream_name><column_name>media</column_name></field>
+      <field><stream_name>rating_avg</stream_name><column_name>rating_avg</column_name></field>
+      <field><stream_name>rating_count</stream_name><column_name>rating_count</column_name></field>
+      <field><stream_name>search_blob</stream_name><column_name>search_blob</column_name></field>
+      <field><stream_name>created_at</stream_name><column_name>created_at</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>1056</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>dates → Oslo</name>
+    <type>SelectValues</type>
+    <description>Source datetimes are UTC strings (their MS SQL box runs UTC). Declaring the timezone here makes them real instants; the MariaDB session is Europe/Oslo, so they land as Norwegian wall-clock and DST is the zone database&#x27;s problem, not ours.</description>
+    <fields>
+      <select_unspecified>N</select_unspecified>
+      <meta><name>created_at</name><rename>created_at</rename><type>Timestamp</type><length>-2</length><precision>-2</precision><conversion_mask>yyyy-MM-dd HH:mm:ss</conversion_mask><date_format_lenient>false</date_format_lenient><date_format_locale/><date_format_timezone>UTC</date_format_timezone><lenient_string_to_number>false</lenient_string_to_number><encoding/><decimal_symbol/><grouping_symbol/><currency_symbol/><storage_type/></meta>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>672</xloc><yloc>96</yloc></GUI>
+    <attributes/>
+  </transform>
+  <order>
+    <hop><from>products (mssql)</from><to>unrated = 0.00</to><enabled>Y</enabled></hop>
+    <hop><from>unrated = 0.00</from><to>price band</to><enabled>Y</enabled></hop>
+    <hop><from>price band</from><to>search blob</to><enabled>Y</enabled></hop>
+    <hop><from>search blob</from><to>dates → Oslo</to><enabled>Y</enabled></hop>
+    <hop><from>dates → Oslo</from><to>+ metaunit</to><enabled>Y</enabled></hop>
+    <hop><from>+ metaunit</from><to>pick target columns</to><enabled>Y</enabled></hop>
+    <hop><from>pick target columns</from><to>→ listings</to><enabled>Y</enabled></hop>
+  </order>
+  <notepads/>
+  <attributes/>
+  <transform_error_handling/>
+</pipeline>

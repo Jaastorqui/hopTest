@@ -1,0 +1,46 @@
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64          # no arm64 image; runs under Rosetta
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Str0ng!Passw0rd"
+    ports: ["1433:1433"]
+    volumes: ["mssql-data:/var/opt/mssql"]
+    healthcheck:
+      test: ["CMD-SHELL", '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1"']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  mssql-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    depends_on:
+      mssql: { condition: service_healthy }
+    volumes: ["./mssql/init.sql:/init.sql:ro"]
+    entrypoint: ["/opt/mssql-tools18/bin/sqlcmd", "-C", "-b", "-I", "-S", "mssql", "-U", "sa", "-P", "Str0ng!Passw0rd", "-i", "/init.sql"]
+    restart: "no"
+
+  mariadb:
+    image: mariadb:11
+    # Norway wall-clock. The source datetimes are UTC (the MSSQL container runs UTC),
+    # so the conversion happens once, here and in the Hop metadata step, not in reports.
+    command: ["--default-time-zone=Europe/Oslo"]
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      TZ: Europe/Oslo
+    ports: ["3306:3306"]
+    volumes:
+      - "mariadb-data:/var/lib/mysql"
+      - "./mariadb/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mssql-data:
+  mariadb-data:

@@ -1,0 +1,33 @@
+{
+  "virtualPath": "",
+  "rdbms": {
+    "MARIADB": {
+      "pluginId": "MARIADB",
+      "pluginName": "MariaDB",
+      "hostname": "localhost",
+      "port": "3306",
+      "databaseName": "marketplace",
+      "username": "root",
+      "password": "root",
+      "accessType": 0,
+      "manualUrl": "",
+      "sshTunnelEnabled": false,
+      "sshTunnelPort": "22",
+      "sshTunnelUsePrivateKey": false,
+      "attributes": {
+        "EXTRA_OPTION_MARIADB.defaultFetchSize": "500",
+        "EXTRA_OPTION_MARIADB.useCursorFetch": "true",
+        "EXTRA_OPTION_MARIADB.zeroDateTimeBehaviorValue": "CONVERT_TO_NULL",
+        "SUPPORTS_BOOLEAN_DATA_TYPE": "Y",
+        "SUPPORTS_TIMESTAMP_DATA_TYPE": "Y",
+        "QUOTE_ALL_FIELDS": "N",
+        "STREAM_RESULTS": "N",
+        "PRESERVE_RESERVED_WORD_CASE": "Y",
+        "EXTRA_OPTION_MARIADB.connectionTimeZone": "Europe/Oslo",
+        "EXTRA_OPTION_MARIADB.forceConnectionTimeZoneToSession": "true",
+        "EXTRA_OPTION_MARIADB.preserveInstants": "true"
+      }
+    }
+  },
+  "name": "mariadb_target"
+}

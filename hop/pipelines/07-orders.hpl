@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>07-orders</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <pipeline_type>Normal</pipeline_type>
+    <pipeline_status>-1</pipeline_status>
+    <parameters/>
+    <description>orders -&gt; orders + orders_archive. Switch/case routes cancelled and refunded away.</description>
+  </info>
+  <transform>
+    <name>orders (mssql)</name>
+    <type>TableInput</type>
+    <connection>mssql_source</connection>
+    <sql>SELECT LOWER(SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),1,8) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),9,4) + &#x27;-3&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),14,3) + &#x27;-a&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),18,3) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),21,12)) AS id,
+       CONCAT(&#x27;ORD-&#x27;, RIGHT(&#x27;00000000&#x27; + CAST(o.id AS VARCHAR(8)), 8)) AS reference,
+       LOWER(SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;account:&#x27; + LOWER(LTRIM(RTRIM(u.email)))), 2),1,8) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;account:&#x27; + LOWER(LTRIM(RTRIM(u.email)))), 2),9,4) + &#x27;-3&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;account:&#x27; + LOWER(LTRIM(RTRIM(u.email)))), 2),14,3) + &#x27;-a&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;account:&#x27; + LOWER(LTRIM(RTRIM(u.email)))), 2),18,3) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;account:&#x27; + LOWER(LTRIM(RTRIM(u.email)))), 2),21,12)) AS account_id,
+       CONVERT(VARCHAR(19), o.placed_at, 120) AS placed_at,
+       o.status,
+       (SELECT sa.line1 AS line1, sa.line2 AS line2, sa.postal_code AS postal_code,
+               sa.city AS city, sa.country AS country
+        FROM addresses sa WHERE sa.id = o.shipping_address_id
+        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS ship_to,
+       (SELECT ba.line1 AS line1, ba.line2 AS line2, ba.postal_code AS postal_code,
+               ba.city AS city, ba.country AS country
+        FROM addresses ba WHERE ba.id = o.billing_address_id
+        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS bill_to,
+       (SELECT TOP 1 pm.method AS method, pm.status AS status,
+               CAST(ROUND(pm.amount * 100, 0) AS BIGINT) AS amount_minor,
+               pm.transaction_ref AS ref,
+               CONVERT(VARCHAR(19), pm.paid_at, 120) AS paid_at
+        FROM payments pm WHERE pm.order_id = o.id
+        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS payment,
+       CAST(ROUND(o.subtotal * 100, 0) AS BIGINT) AS subtotal_minor,
+       CAST(ROUND(o.shipping_cost * 100, 0) AS BIGINT) AS shipping_minor,
+       CAST(ROUND(o.total * 100, 0) AS BIGINT) AS total_minor,
+       o.currency,
+       &#x27;orders&#x27; AS source_table, CAST(o.id AS VARCHAR(40)) AS source_id,
+       &#x27;orders&#x27; AS target_table, LOWER(SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),1,8) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),9,4) + &#x27;-3&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),14,3) + &#x27;-a&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),18,3) + &#x27;-&#x27; + SUBSTRING(CONVERT(CHAR(32), HASHBYTES(&#x27;MD5&#x27;, &#x27;orders:&#x27; + CAST(o.id AS VARCHAR(20))), 2),21,12)) AS target_id,
+       &#x27;derived uuid&#x27; AS note
+FROM orders o JOIN users u ON u.id = o.user_id</sql>
+    <limit>0</limit>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lookup/>
+    <sql_from_file/>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <GUI><xloc>112</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>+ metaunit</name>
+    <type>Constant</type>
+    <description/>
+    <fields>
+      <field><name>metaunit</name><type>Integer</type><nullif>111</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>288</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>route by status</name>
+    <type>SwitchCase</type>
+    <description>Money that never moved does not belong in the table finance reports read. Two target tables from one stream, decided per row.</description>
+    <cases>
+      <case><target_transform>pick archive columns</target_transform><value>cancelled</value></case>
+      <case><target_transform>pick archive columns</target_transform><value>refunded</value></case>
+    </cases>
+    <case_value_type>String</case_value_type>
+    <default_target_transform>pick target columns</default_target_transform>
+    <fieldname>status</fieldname>
+    <use_contains>N</use_contains>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>464</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>pick target columns</name>
+    <type>SelectValues</type>
+    <description/>
+    <fields>
+      <field><name>id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>reference</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>account_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>placed_at</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>status</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>ship_to</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>bill_to</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>payment</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>subtotal_minor</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>shipping_minor</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>total_minor</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>currency</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaunit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>672</xloc><yloc>80</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ orders</name>
+    <type>TableOutput</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>orders</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field/>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>id</stream_name><column_name>id</column_name></field>
+      <field><stream_name>reference</stream_name><column_name>reference</column_name></field>
+      <field><stream_name>account_id</stream_name><column_name>account_id</column_name></field>
+      <field><stream_name>placed_at</stream_name><column_name>placed_at</column_name></field>
+      <field><stream_name>status</stream_name><column_name>status</column_name></field>
+      <field><stream_name>ship_to</stream_name><column_name>ship_to</column_name></field>
+      <field><stream_name>bill_to</stream_name><column_name>bill_to</column_name></field>
+      <field><stream_name>payment</stream_name><column_name>payment</column_name></field>
+      <field><stream_name>subtotal_minor</stream_name><column_name>subtotal_minor</column_name></field>
+      <field><stream_name>shipping_minor</stream_name><column_name>shipping_minor</column_name></field>
+      <field><stream_name>total_minor</stream_name><column_name>total_minor</column_name></field>
+      <field><stream_name>currency</stream_name><column_name>currency</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>848</xloc><yloc>80</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>pick archive columns</name>
+    <type>SelectValues</type>
+    <description/>
+    <fields>
+      <field><name>id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>reference</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>account_id</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>placed_at</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>status</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>total_minor</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>currency</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <field><name>metaunit</name><rename></rename><length>-2</length><precision>-2</precision></field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>672</xloc><yloc>256</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>→ orders_archive</name>
+    <type>TableOutput</type>
+    <description/>
+    <connection>mariadb_target</connection>
+    <schema/>
+    <table>orders_archive</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <only_when_have_rows>N</only_when_have_rows>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field/>
+    <auto_update_table_structure>N</auto_update_table_structure>
+    <always_drop_and_recreate>N</always_drop_and_recreate>
+    <add_columns>N</add_columns>
+    <drop_columns>N</drop_columns>
+    <change_column_types>N</change_column_types>
+    <fields>
+      <field><stream_name>id</stream_name><column_name>id</column_name></field>
+      <field><stream_name>reference</stream_name><column_name>reference</column_name></field>
+      <field><stream_name>account_id</stream_name><column_name>account_id</column_name></field>
+      <field><stream_name>placed_at</stream_name><column_name>placed_at</column_name></field>
+      <field><stream_name>status</stream_name><column_name>status</column_name></field>
+      <field><stream_name>total_minor</stream_name><column_name>total_minor</column_name></field>
+      <field><stream_name>currency</stream_name><column_name>currency</column_name></field>
+      <field><stream_name>metaunit</stream_name><column_name>metaunit</column_name></field>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>848</xloc><yloc>256</yloc></GUI>
+    <attributes/>
+  </transform>
+  <transform>
+    <name>dates → Oslo</name>
+    <type>SelectValues</type>
+    <description>Source datetimes are UTC strings (their MS SQL box runs UTC). Declaring the timezone here makes them real instants; the MariaDB session is Europe/Oslo, so they land as Norwegian wall-clock and DST is the zone database&#x27;s problem, not ours.</description>
+    <fields>
+      <select_unspecified>N</select_unspecified>
+      <meta><name>placed_at</name><rename>placed_at</rename><type>Timestamp</type><length>-2</length><precision>-2</precision><conversion_mask>yyyy-MM-dd HH:mm:ss</conversion_mask><date_format_lenient>false</date_format_lenient><date_format_locale/><date_format_timezone>UTC</date_format_timezone><lenient_string_to_number>false</lenient_string_to_number><encoding/><decimal_symbol/><grouping_symbol/><currency_symbol/><storage_type/></meta>
+    </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <GUI><xloc>200</xloc><yloc>160</yloc></GUI>
+    <attributes/>
+  </transform>
+  <order>
+    <hop><from>orders (mssql)</from><to>dates → Oslo</to><enabled>Y</enabled></hop>
+    <hop><from>dates → Oslo</from><to>+ metaunit</to><enabled>Y</enabled></hop>
+    <hop><from>+ metaunit</from><to>route by status</to><enabled>Y</enabled></hop>
+    <hop><from>route by status</from><to>pick target columns</to><enabled>Y</enabled></hop>
+    <hop><from>pick target columns</from><to>→ orders</to><enabled>Y</enabled></hop>
+    <hop><from>route by status</from><to>pick archive columns</to><enabled>Y</enabled></hop>
+    <hop><from>pick archive columns</from><to>→ orders_archive</to><enabled>Y</enabled></hop>
+  </order>
+  <notepads/>
+  <attributes/>
+  <transform_error_handling/>
+</pipeline>

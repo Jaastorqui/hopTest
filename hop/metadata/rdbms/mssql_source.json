@@ -1,0 +1,29 @@
+{
+  "virtualPath": "",
+  "rdbms": {
+    "MSSQLNATIVE": {
+      "pluginId": "MSSQLNATIVE",
+      "pluginName": "MS SQL Server (Native)",
+      "hostname": "localhost",
+      "port": "1433",
+      "databaseName": "marketplace",
+      "username": "sa",
+      "password": "Str0ng!Passw0rd",
+      "accessType": 0,
+      "manualUrl": "",
+      "sshTunnelEnabled": false,
+      "sshTunnelPort": "22",
+      "sshTunnelUsePrivateKey": false,
+      "attributes": {
+        "EXTRA_OPTION_MSSQLNATIVE.encrypt": "true",
+        "EXTRA_OPTION_MSSQLNATIVE.trustServerCertificate": "true",
+        "SUPPORTS_BOOLEAN_DATA_TYPE": "N",
+        "SUPPORTS_TIMESTAMP_DATA_TYPE": "Y",
+        "QUOTE_ALL_FIELDS": "N",
+        "STREAM_RESULTS": "Y",
+        "PRESERVE_RESERVED_WORD_CASE": "Y"
+      }
+    }
+  },
+  "name": "mssql_source"
+}
